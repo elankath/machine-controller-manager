@@ -52,6 +52,7 @@ func NewController(
 	safetyOptions options.SafetyOptions,
 	autoscalerScaleDownAnnotationDuringRollout bool,
 ) (Controller, error) {
+	klog.Info("YOMAMA! I AM A BADGUY!")
 	controller := &controller{
 		namespace:                      namespace,
 		controlMachineClient:           controlMachineClient,
@@ -192,10 +193,7 @@ type controller struct {
 }
 
 func (c *controller) Run(workers int, stopCh <-chan struct{}) {
-
-	var (
-		waitGroup sync.WaitGroup
-	)
+	var waitGroup sync.WaitGroup
 
 	defer runtimeutil.HandleCrash()
 	defer c.nodeQueue.ShutDown()

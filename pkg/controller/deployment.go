@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+	"k8s.io/utils/strings/slices"
 
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -69,7 +70,7 @@ func (dc *controller) deleteMachineDeployment(obj interface{}) {
 	if !ok {
 		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
 		if !ok {
-			//utilruntime.HandleError(fmt.Errorf("Couldn't get object from tombstone %#v", obj))
+			// utilruntime.HandleError(fmt.Errorf("Couldn't get object from tombstone %#v", obj))
 			return
 		}
 		d, ok = tombstone.Obj.(*v1alpha1.MachineDeployment)
@@ -303,7 +304,7 @@ func (dc *controller) getMachineDeploymentForMachine(ctx context.Context, machin
 		// No controller owns this Machine.
 		return nil
 	}
-	if controllerRef.Kind != "MachineSet" { //TODO: Remove hardcoded string
+	if controllerRef.Kind != "MachineSet" { // TODO: Remove hardcoded string
 		// Not a Machine owned by a machine set.
 		return nil
 	}
@@ -470,7 +471,6 @@ func (dc *controller) reconcileClusterMachineDeployment(key string) error {
 			d.Status.ObservedGeneration = d.Generation
 			if _, err := dc.controlMachineClient.MachineDeployments(d.Namespace).UpdateStatus(ctx, d, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("failed to update status for machine deployment %s: %w", deployment.Name, err)
-
 			}
 		}
 		return nil
@@ -512,8 +512,18 @@ func (dc *controller) reconcileClusterMachineDeployment(key string) error {
 		return err
 	}
 
+	simConfig, err := CreateLoadSimulationConfig()
+	if err != nil {
+		return fmt.Errorf("failed to create/load SimulationConfig: %w", err)
+	}
+
 	if d.Spec.Paused {
 		klog.V(3).Infof("Scaling detected for machineDeployment %s which is paused", d.Name)
+		if slices.Contains(simConfig.ScaleErrorForMachineDeployments, d.Name) {
+			err = fmt.Errorf("simulating scale error for %q", d.Name)
+			klog.Error(err)
+			return err
+		}
 		return dc.sync(ctx, d, machineSets, machineMap)
 	}
 
@@ -525,12 +535,16 @@ func (dc *controller) reconcileClusterMachineDeployment(key string) error {
 	}
 
 	scalingEvent, err := dc.isScalingEvent(ctx, d, machineSets, machineMap)
-
 	if err != nil {
 		return err
 	}
 	if scalingEvent {
 		klog.V(3).Infof("Scaling detected for machineDeployment %s", d.Name)
+		if slices.Contains(simConfig.ScaleErrorForMachineDeployments, d.Name) {
+			err = fmt.Errorf("simulating scale error for %q", d.Name)
+			klog.Error(err)
+			return err
+		}
 		return dc.sync(ctx, d, machineSets, machineMap)
 	}
 
